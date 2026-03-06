@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turnstone Liquidity Tool</title>
+    <style>
+      html, body, #root { margin: 0; padding: 0; min-height: 100%; background: #0c0e12; }
+      * { box-sizing: border-box; }
+      .boot-warning {
+        max-width: 760px;
+        margin: 40px auto;
+        background: #1a1d27;
+        border: 1px solid #2e3448;
+        border-radius: 12px;
+        color: #e8ecf4;
+        padding: 16px 18px;
+        font-family: Arial, sans-serif;
+        line-height: 1.5;
+      }
+      .boot-warning h2 { margin: 0 0 8px; font-size: 18px; }
+      .boot-warning p { margin: 6px 0; color: #b9c0d0; font-size: 14px; }
+      .boot-warning code { color: #ffd8ad; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script>
+      (function () {
+        const SOURCES = {
+          react: [
+            "https://unpkg.com/react@18/umd/react.production.min.js",
+            "https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"
+          ],
+          reactDom: [
+            "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
+            "https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"
+          ],
+          propTypes: [
+            "https://unpkg.com/prop-types@15.8.1/prop-types.min.js",
+            "https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"
+          ],
+          babel: [
+            "https://unpkg.com/@babel/standalone/babel.min.js",
+            "https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.0/babel.min.js"
+          ],
+          recharts: [
+            "https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js",
+            "https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js",
+            "https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"
+          ]
+        };
+
+        function loadScript(src) {
+          return new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = src;
+            script.async = false;
+            script.onload = () => resolve(src);
+            script.onerror = () => reject(new Error(`Kunne ikke laste ${src}`));
+            document.head.appendChild(script);
+          });
+        }
+
+        async function loadFromAny(name) {
+          const errs = [];
+          for (const src of SOURCES[name]) {
+            try {
+              await loadScript(src);
+              return src;
+            } catch (err) {
+              errs.push(err.message);
+            }
+          }
+          throw new Error(`${name} feilet fra alle kilder: ${errs.join(" | ")}`);
+        }
+
+        function showBootWarning(message) {
+          const root = document.getElementById("root");
+          root.innerHTML = `
+            <div class="boot-warning">
+              <h2>Kunne ikke starte verktøyet</h2>
+              <p>${message}</p>
+              <p>Tips: Sjekk om nettverket blokkerer tredjeparts-CDN (unpkg/jsdelivr/cdnjs), eller host bibliotekene lokalt.</p>
+              <p>Teknisk detalj: <code>${location.host}</code></p>
+            </div>
+          `;
+        }
+
+        async function bootstrap() {
+          try {
+            await loadFromAny("react");
+            await loadFromAny("reactDom");
+            await loadFromAny("propTypes");
+            await loadFromAny("babel");
+          } catch (err) {
+            console.error(err);
+            showBootWarning("Nødvendige biblioteker (React/Babel) ble ikke lastet.");
+            return;
+          }
+
+          try {
+            await loadFromAny("recharts");
+          } catch (err) {
+            console.warn(err.message);
+            console.warn("Recharts kunne ikke lastes. Appen starter uten grafer.");
+          }
+
+          const appScript = document.createElement("script");
+          appScript.type = "text/babel";
+          appScript.src = "./app.jsx";
+          appScript.onerror = () => showBootWarning("Klarte ikke laste app-koden (app.jsx).");
+          document.body.appendChild(appScript);
+        }
+
+        bootstrap();
+      })();
+    </script>
+  </body>
+</html>
