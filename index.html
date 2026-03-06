@@ -111,11 +111,20 @@
             console.warn("Recharts kunne ikke lastes. Appen starter uten grafer.");
           }
 
-          const appScript = document.createElement("script");
-          appScript.type = "text/babel";
-          appScript.src = "./app.jsx";
-          appScript.onerror = () => showBootWarning("Klarte ikke laste app-koden (app.jsx).");
-          document.body.appendChild(appScript);
+          try {
+            const response = await fetch("./app.jsx", { cache: "no-store" });
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const source = await response.text();
+            const compiled = Babel.transform(source, { presets: ["react"] }).code;
+            const runner = new Function(`${compiled}
+//# sourceURL=app.compiled.js`);
+            runner();
+          } catch (err) {
+            console.error(err);
+            showBootWarning("Klarte ikke kompilere/starte app-koden (app.jsx).");
+          }
         }
 
         bootstrap();
