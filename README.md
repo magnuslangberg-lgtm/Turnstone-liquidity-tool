@@ -21,6 +21,8 @@ python3 -m http.server 4173
 - Kallinger legges før utbetalinger i årsmodellen (mer konservativ likviditetsbelastning).
 - Kortere standard horisont (7 år) med raskere realiseringsprofil i tråd med forventet fondsløp.
 - Scenarioer styres nå med justerbar IRR (0–40%), og TVPI avledes automatisk som (1+IRR)^5.
+- Toppslider for aktivt scenario (Stress låst til 0%, øvrige starter på 10/20/30%).
+- Eget bidragschart som viser avkastning fra Turnstone vs. parkering/lån i både EUR og %.
 - "Nullstill"-knapp for å gå tilbake til standardverdier.
 - Robusthet for multiplikator-beregning når total innkalling er 0.
 - Responsivt hovedgrid for bedre visning på smalere skjermer.

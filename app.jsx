@@ -23,7 +23,7 @@ const DEFAULT_CF = [
   { year: 6, calls: 100, distributions: 1800 },
   { year: 7, calls: 0, distributions: 900 },
 ];
-const DEFAULT_SCENARIO_IRR = { stress: 0.10, unfavorable: 0.17, moderate: 0.24, favorable: 0.34 };
+const DEFAULT_SCENARIO_IRR = { stress: 0.00, unfavorable: 0.10, moderate: 0.20, favorable: 0.30 };
 const DEFAULT_Q1_CALL_SPLIT = [35, 30, 20, 15];
 const STORAGE_KEY = "turnstone-liquidity-tool:v1";
 
@@ -185,7 +185,9 @@ function TurnstoneLiquidityTool() {
   }, [commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, scenarioIrr, q1CallSplit]);
 
   const updCf = useCallback((i, f, v) => { setCfs(p => { const n = [...p]; n[i] = { ...n[i], [f]: v }; return n; }); }, []);
-  const updScenarioIrr = useCallback((k, v) => { setScenarioIrr(p => ({ ...p, [k]: Math.max(0, Math.min(0.40, v)) })); }, []);
+  const updScenarioIrr = useCallback((k, v) => {
+    setScenarioIrr(p => ({ ...p, [k]: k === "stress" ? 0 : Math.max(0, Math.min(0.40, v)) }));
+  }, []);
   const updQ1Split = useCallback((i, v) => {
     setQ1CallSplit(p => {
       const n = [...p];
@@ -280,6 +282,11 @@ function TurnstoneLiquidityTool() {
   const totRet = last.totalDistributions - last.totalCalls + last.totalParkingIncome - last.totalCreditCost;
   const retPct = last.totalCalls > 0 ? totRet / last.totalCalls : 0;
   const tvpi = last.totalCalls > 0 ? last.totalDistributions / last.totalCalls : 0;
+  const turnstoneNet = last.totalDistributions - last.totalCalls;
+  const turnstonePct = last.totalCalls > 0 ? turnstoneNet / last.totalCalls : 0;
+  const liquidityOverlayNet = last.totalParkingIncome - last.totalCreditCost;
+  const liquidityOverlayPct = last.totalCalls > 0 ? liquidityOverlayNet / last.totalCalls : 0;
+  const contributionData = [{ key: "Bidrag", turnstone: turnstoneNet, liquidity: liquidityOverlayNet }];
 
   const resetAll = useCallback(() => {
     setCommitment(500000);
@@ -314,13 +321,23 @@ function TurnstoneLiquidityTool() {
               <span style={{ fontSize: 11, color: C.textDim, letterSpacing: "0.12em", textTransform: "uppercase" }}>Pensum Asset Management</span>
             </div>
             <h1 style={{ fontSize: 28, fontWeight: 400, fontFamily: serif, margin: 0, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-              Likviditetsstyring<span style={{ color: C.accent }}> — </span><span style={{ color: C.textMuted }}>Turnstone PEF IV Feeder</span>
+              Likviditetsstyring<span style={{ color: C.accent }}> — </span><span style={{ color: C.textMuted }}>Turnstone Fund</span>
             </h1>
             <p style={{ fontSize: 13, color: C.textDim, margin: "6px 0 0", maxWidth: 600 }}>
               Visualiser kapitalflyten og optimaliser din likviditetsstrategi. Kapitalen parkeres i fond mellom innkallinger.
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div style={{ minWidth: 220, maxWidth: 260, width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 8, background: C.card }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 11, color: C.textMuted }}>
+                <span>{`Scenario IRR — ${scenLabels[scen]}`}</span>
+                <span style={{ color: C.accent, fontWeight: 600 }}>{`${(scenarioIrr[scen]*100).toFixed(1)}%`}</span>
+              </div>
+              <input type="range" min={0} max={40} step={0.5} value={scenarioIrr[scen] * 100} disabled={scen === "stress"}
+                onChange={e => updScenarioIrr(scen, Number(e.target.value) / 100)}
+                style={{ width: "100%", accentColor: C.accent, cursor: scen === "stress" ? "not-allowed" : "pointer" }} />
+              {scen === "stress" && <div style={{ fontSize: 10, color: C.textDim, marginTop: 4 }}>Stress-scenario er låst til 0%.</div>}
+            </div>
             <button onClick={resetAll} style={{ background: "transparent", color: C.textMuted, border: `1px solid ${C.borderLight}`, borderRadius: 8, cursor: "pointer", fontSize: 12, padding: "8px 12px" }}>Nullstill</button>
             <Toggle options={[{value:"stress",label:"Stress"},{value:"unfavorable",label:"Ufordelaktig"},{value:"moderate",label:"Moderat"},{value:"favorable",label:"Fordelaktig"}]} value={scen} onChange={setScen} />
           </div>
@@ -332,7 +349,8 @@ function TurnstoneLiquidityTool() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
           {[
             { label: "Innskuddsforpliktelse", value: fmtE(commitment), color: C.text, sub: "Total kommittering" },
-            { label: "Netto avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPct*100).toFixed(1)}% av innkalt kapital` },
+            { label: "Total avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPct*100).toFixed(1)}% av innkalt kapital` },
+            { label: "Turnstone avkastning", value: fmtE(turnstoneNet), color: turnstoneNet >= 0 ? C.accent : C.red, sub: `${(turnstonePct*100).toFixed(1)}% av innkalt kapital` },
             { label: "Maks kapital bundet", value: fmtE(peakRisk), color: C.accent, sub: `${((peakRisk/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
             { label: "Snitt kapital bundet", value: fmtE(avgDepl), color: C.blue, sub: `${((avgDepl/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
             { label: "TVPI", value: `${tvpi.toFixed(2)}x`, color: C.purple, sub: "Distribusjoner / innkalt kapital" },
@@ -411,11 +429,11 @@ function TurnstoneLiquidityTool() {
                       {Object.entries(scenLabels).map(([k,l]) => (
                         <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                           <span style={{ fontSize: 11, color: k === scen ? C.accent : C.textDim, fontWeight: k === scen ? 600 : 400 }}>{l}</span>
-                          <NumInput value={scenarioIrr[k] * 100} onChange={v => updScenarioIrr(k, v / 100)} style={{ width: 56 }} />
+                          <span style={{ fontSize: 11, color: C.text, fontWeight: 600, minWidth: 40, textAlign: "right" }}>{`${(scenarioIrr[k]*100).toFixed(1)}%`}</span>
                         </div>
                       ))}
                     </div>
-                    <div style={{ fontSize: 10, color: C.textDim, marginTop: 8 }}>TVPI beregnes som (1 + IRR)^5 for valgt scenario.</div>
+                    <div style={{ fontSize: 10, color: C.textDim, marginTop: 8 }}>TVPI beregnes som (1 + IRR)^5 for valgt scenario. Bruk slideren i toppfeltet for dynamisk justering.</div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kontantstrømmer (per EUR 10.000)</div>
@@ -496,6 +514,25 @@ function TurnstoneLiquidityTool() {
                   {(strat === "credit" || strat === "combined") && <Area type="monotone" dataKey="creditDrawn" name="Utestående lån" fill={C.redDim} stroke={C.red} strokeWidth={2} />}
                   <Line type="monotone" dataKey="parkingIncome" name="Avkastning parkering" stroke={C.green} strokeWidth={1.5} dot={{ r: 3, fill: C.green }} />
                 </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={cCard}>
+              <h3 style={chT}>Bidrag til total avkastning</h3>
+              <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 11 }}>
+                <span style={{ color: C.accent }}>Turnstone: {fmtE(turnstoneNet)} ({(turnstonePct*100).toFixed(1)}%)</span>
+                <span style={{ color: liquidityOverlayNet >= 0 ? C.green : C.red }}>Parkering/lån: {fmtE(liquidityOverlayNet)} ({(liquidityOverlayPct*100).toFixed(1)}%)</span>
+              </div>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={contributionData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.chartGrid} vertical={false} />
+                  <XAxis dataKey="key" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={{ stroke: C.border }} tickLine={false} />
+                  <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtE} />
+                  <Tooltip content={<Tip />} />
+                  <ReferenceLine y={0} stroke={C.borderLight} />
+                  <Bar dataKey="turnstone" name="Turnstone avkastning" fill={C.accent} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="liquidity" name="Parkering/lån bidrag" fill={liquidityOverlayNet >= 0 ? C.green : C.red} radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
 
