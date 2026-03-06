@@ -23,7 +23,7 @@ const DEFAULT_CF = [
   { year: 6, calls: 100, distributions: 1800 },
   { year: 7, calls: 0, distributions: 900 },
 ];
-const DEFAULT_MULT = { stress: 1.10, unfavorable: 1.30, moderate: 1.60, favorable: 2.00 };
+const DEFAULT_SCENARIO_IRR = { stress: 0.10, unfavorable: 0.17, moderate: 0.24, favorable: 0.34 };
 const DEFAULT_Q1_CALL_SPLIT = [35, 30, 20, 15];
 const STORAGE_KEY = "turnstone-liquidity-tool:v1";
 
@@ -153,10 +153,23 @@ function TurnstoneLiquidityTool() {
     if (!saved) return DEFAULT_CF.map(c => ({ ...c }));
     try { return JSON.parse(saved).cfs ?? DEFAULT_CF.map(c => ({ ...c })); } catch { return DEFAULT_CF.map(c => ({ ...c })); }
   });
-  const [mults, setMults] = useState(() => {
+  const [scenarioIrr, setScenarioIrr] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return { ...DEFAULT_MULT };
-    try { return JSON.parse(saved).mults ?? { ...DEFAULT_MULT }; } catch { return { ...DEFAULT_MULT }; }
+    if (!saved) return { ...DEFAULT_SCENARIO_IRR };
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.scenarioIrr) return parsed.scenarioIrr;
+      if (parsed.mults) {
+        const toIrr = (tvpi) => Math.max(0, Math.min(0.40, Math.pow(Math.max(tvpi, 0.01), 1/5) - 1));
+        return {
+          stress: toIrr(parsed.mults.stress ?? DEFAULT_SCENARIO_IRR.stress),
+          unfavorable: toIrr(parsed.mults.unfavorable ?? DEFAULT_SCENARIO_IRR.unfavorable),
+          moderate: toIrr(parsed.mults.moderate ?? DEFAULT_SCENARIO_IRR.moderate),
+          favorable: toIrr(parsed.mults.favorable ?? DEFAULT_SCENARIO_IRR.favorable),
+        };
+      }
+      return { ...DEFAULT_SCENARIO_IRR };
+    } catch { return { ...DEFAULT_SCENARIO_IRR }; }
   });
   const [q1CallSplit, setQ1CallSplit] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -168,11 +181,11 @@ function TurnstoneLiquidityTool() {
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults, q1CallSplit }));
-  }, [commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults, q1CallSplit]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, scenarioIrr, q1CallSplit }));
+  }, [commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, scenarioIrr, q1CallSplit]);
 
   const updCf = useCallback((i, f, v) => { setCfs(p => { const n = [...p]; n[i] = { ...n[i], [f]: v }; return n; }); }, []);
-  const updMult = useCallback((k, v) => { setMults(p => ({ ...p, [k]: v })); }, []);
+  const updScenarioIrr = useCallback((k, v) => { setScenarioIrr(p => ({ ...p, [k]: Math.max(0, Math.min(0.40, v)) })); }, []);
   const updQ1Split = useCallback((i, v) => {
     setQ1CallSplit(p => {
       const n = [...p];
@@ -182,7 +195,7 @@ function TurnstoneLiquidityTool() {
   }, []);
   const resetCf = useCallback(() => {
     setCfs(DEFAULT_CF.map(c => ({ ...c })));
-    setMults({ ...DEFAULT_MULT });
+    setScenarioIrr({ ...DEFAULT_SCENARIO_IRR });
     setQ1CallSplit([...DEFAULT_Q1_CALL_SPLIT]);
   }, []);
 
@@ -195,7 +208,8 @@ function TurnstoneLiquidityTool() {
   const data = useMemo(() => {
     let parkBal = commitment, credDrw = 0, totCall = 0, totDist = 0, totParkInc = 0, totCredCost = 0, cumNet = 0;
     const totBaseDist = cfs.reduce((s, c) => s + c.distributions, 0);
-    const targetDist = 10000 * mults[scen];
+    const targetTvpi = Math.pow(1 + (scenarioIrr[scen] ?? DEFAULT_SCENARIO_IRR.moderate), 5);
+    const targetDist = 10000 * targetTvpi;
     const distMult = totBaseDist > 0 ? targetDist / totBaseDist : 0;
 
     const applyPeriod = (calls, dist, periodFactor) => {
@@ -243,9 +257,10 @@ function TurnstoneLiquidityTool() {
           credCost += step.credCost;
         });
       } else {
-        const step = applyPeriod(calls, dist, 1);
-        parkInc = step.parkInc;
-        credCost = step.credCost;
+        const firstHalf = applyPeriod(calls, 0, 0.5);
+        const secondHalf = applyPeriod(0, dist, 0.5);
+        parkInc = firstHalf.parkInc + secondHalf.parkInc;
+        credCost = firstHalf.credCost + secondHalf.credCost;
       }
 
       return {
@@ -257,14 +272,14 @@ function TurnstoneLiquidityTool() {
         capitalAtRisk: Math.max(0, totCall - totDist),
       };
     });
-  }, [commitment, parkRet, credRate, strat, scen, scale, reinvest, repayDist, cfs, mults, q1CallSplit]);
+  }, [commitment, parkRet, credRate, strat, scen, scale, reinvest, repayDist, cfs, scenarioIrr, q1CallSplit]);
 
   const last = data[data.length - 1];
   const peakRisk = Math.max(...data.map(d => d.capitalAtRisk));
   const avgDepl = data.reduce((s, d) => s + d.capitalAtRisk, 0) / data.length;
   const totRet = last.totalDistributions - last.totalCalls + last.totalParkingIncome - last.totalCreditCost;
-  const retPct = totRet / commitment;
-  const effMult = last.totalCalls > 0 ? (last.totalDistributions + last.totalParkingIncome - last.totalCreditCost) / last.totalCalls : 0;
+  const retPct = last.totalCalls > 0 ? totRet / last.totalCalls : 0;
+  const tvpi = last.totalCalls > 0 ? last.totalDistributions / last.totalCalls : 0;
 
   const resetAll = useCallback(() => {
     setCommitment(500000);
@@ -317,10 +332,10 @@ function TurnstoneLiquidityTool() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
           {[
             { label: "Innskuddsforpliktelse", value: fmtE(commitment), color: C.text, sub: "Total kommittering" },
-            { label: "Netto avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPct*100).toFixed(1)}% av kommittering` },
-            { label: "Maks kapital bundet", value: fmtE(peakRisk), color: C.accent, sub: `${((peakRisk/commitment)*100).toFixed(0)}% av kommittering` },
-            { label: "Snitt kapital bundet", value: fmtE(avgDepl), color: C.blue, sub: `${((avgDepl/commitment)*100).toFixed(0)}% av kommittering` },
-            { label: "Effektiv multippel", value: `${effMult.toFixed(2)}x`, color: C.purple, sub: "Inkl. parkerings-/låneeffekter" },
+            { label: "Netto avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPct*100).toFixed(1)}% av innkalt kapital` },
+            { label: "Maks kapital bundet", value: fmtE(peakRisk), color: C.accent, sub: `${((peakRisk/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
+            { label: "Snitt kapital bundet", value: fmtE(avgDepl), color: C.blue, sub: `${((avgDepl/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
+            { label: "TVPI", value: `${tvpi.toFixed(2)}x`, color: C.purple, sub: "Distribusjoner / innkalt kapital" },
           ].map((s, i) => (
             <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}><Stat {...s} /></div>
           ))}
@@ -380,26 +395,27 @@ function TurnstoneLiquidityTool() {
               </div>
               {!showDetails && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-                  {[["Mål netto IRR",">17%"],["Mål TVPI (moderat)",`${mults.moderate.toFixed(2)}x`],["Fondets levetid",`${cfs.length} år`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
+                  {[["Mål netto IRR",">17%"],["Mål IRR (moderat)",`${(scenarioIrr.moderate*100).toFixed(1)}%`],["Fondets levetid",`${cfs.length} år`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: C.textDim }}>{k}</span><span style={{ fontWeight: 600, color: C.text }}>{v}</span>
                     </div>
                   ))}
-                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4, fontStyle: "italic" }}>Klikk for å redigere kontantstrømmer og scenariomultiplikatorer</div>
+                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 4, fontStyle: "italic" }}>Klikk for å redigere kontantstrømmer og scenario-IRR</div>
                 </div>
               )}
               {showDetails && (
                 <div>
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Scenariomultiplikatorer (TVPI)</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Scenario IRR (0–40%)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       {Object.entries(scenLabels).map(([k,l]) => (
                         <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                           <span style={{ fontSize: 11, color: k === scen ? C.accent : C.textDim, fontWeight: k === scen ? 600 : 400 }}>{l}</span>
-                          <NumInput value={mults[k]} onChange={v => updMult(k,v)} style={{ width: 56 }} />
+                          <NumInput value={scenarioIrr[k] * 100} onChange={v => updScenarioIrr(k, v / 100)} style={{ width: 56 }} />
                         </div>
                       ))}
                     </div>
+                    <div style={{ fontSize: 10, color: C.textDim, marginTop: 8 }}>TVPI beregnes som (1 + IRR)^5 for valgt scenario.</div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kontantstrømmer (per EUR 10.000)</div>
