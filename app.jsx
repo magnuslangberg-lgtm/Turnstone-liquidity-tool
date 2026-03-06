@@ -280,10 +280,12 @@ function TurnstoneLiquidityTool() {
   const peakRisk = Math.max(...data.map(d => d.capitalAtRisk));
   const avgDepl = data.reduce((s, d) => s + d.capitalAtRisk, 0) / data.length;
   const totRet = last.totalDistributions - last.totalCalls + last.totalParkingIncome - last.totalCreditCost;
-  const retPct = last.totalCalls > 0 ? totRet / last.totalCalls : 0;
+  const retPctCalled = last.totalCalls > 0 ? totRet / last.totalCalls : 0;
+  const retPctCommitment = commitment > 0 ? totRet / commitment : 0;
   const tvpi = last.totalCalls > 0 ? last.totalDistributions / last.totalCalls : 0;
   const turnstoneNet = last.totalDistributions - last.totalCalls;
-  const turnstonePct = last.totalCalls > 0 ? turnstoneNet / last.totalCalls : 0;
+  const turnstonePctCalled = last.totalCalls > 0 ? turnstoneNet / last.totalCalls : 0;
+  const turnstonePctCommitment = commitment > 0 ? turnstoneNet / commitment : 0;
   const liquidityOverlayNet = last.totalParkingIncome - last.totalCreditCost;
   const liquidityOverlayPct = last.totalCalls > 0 ? liquidityOverlayNet / last.totalCalls : 0;
   const contributionData = [{ key: "Bidrag", turnstone: turnstoneNet, liquidity: liquidityOverlayNet }];
@@ -349,10 +351,10 @@ function TurnstoneLiquidityTool() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
           {[
             { label: "Innskuddsforpliktelse", value: fmtE(commitment), color: C.text, sub: "Total kommittering" },
-            { label: "Total avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPct*100).toFixed(1)}% av innkalt kapital` },
-            { label: "Turnstone avkastning", value: fmtE(turnstoneNet), color: turnstoneNet >= 0 ? C.accent : C.red, sub: `${(turnstonePct*100).toFixed(1)}% av innkalt kapital` },
-            { label: "Maks kapital bundet", value: fmtE(peakRisk), color: C.accent, sub: `${((peakRisk/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
-            { label: "Snitt kapital bundet", value: fmtE(avgDepl), color: C.blue, sub: `${((avgDepl/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
+            { label: "Total avkastning", value: fmtE(totRet), color: totRet >= 0 ? C.green : C.red, sub: `${(retPctCalled*100).toFixed(1)}% av innkalt kapital · ${(retPctCommitment*100).toFixed(1)}% av kommittering` },
+            { label: "Turnstone avkastning", value: fmtE(turnstoneNet), color: turnstoneNet >= 0 ? C.accent : C.red, sub: `${(turnstonePctCalled*100).toFixed(1)}% av innkalt kapital · ${(turnstonePctCommitment*100).toFixed(1)}% av kommittering` },
+            { label: "Maks bundet kapital i Turnstone", value: fmtE(peakRisk), color: C.accent, sub: `${((peakRisk/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
+            { label: "Snitt bundet kapital i Turnstone", value: fmtE(avgDepl), color: C.blue, sub: `${((avgDepl/Math.max(last.totalCalls,1))*100).toFixed(0)}% av innkalt kapital` },
             { label: "TVPI", value: `${tvpi.toFixed(2)}x`, color: C.purple, sub: "Distribusjoner / innkalt kapital" },
           ].map((s, i) => (
             <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px" }}><Stat {...s} /></div>
@@ -520,7 +522,7 @@ function TurnstoneLiquidityTool() {
             <div style={cCard}>
               <h3 style={chT}>Bidrag til total avkastning</h3>
               <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 11 }}>
-                <span style={{ color: C.accent }}>Turnstone: {fmtE(turnstoneNet)} ({(turnstonePct*100).toFixed(1)}%)</span>
+                <span style={{ color: C.accent }}>Turnstone: {fmtE(turnstoneNet)} ({(turnstonePctCalled*100).toFixed(1)}% av innkalt)</span>
                 <span style={{ color: liquidityOverlayNet >= 0 ? C.green : C.red }}>Parkering/lån: {fmtE(liquidityOverlayNet)} ({(liquidityOverlayPct*100).toFixed(1)}%)</span>
               </div>
               <ResponsiveContainer width="100%" height={180}>
@@ -537,15 +539,15 @@ function TurnstoneLiquidityTool() {
             </div>
 
             <div style={cCard}>
-              <h3 style={chT}>Kapital faktisk bundet vs. kommittert</h3>
+              <h3 style={chT}>Bundet kapital i Turnstone</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <ComposedChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.chartGrid} vertical={false} />
                   <XAxis dataKey="yearLabel" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={{ stroke: C.border }} tickLine={false} />
                   <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${((v/commitment)*100).toFixed(0)}%`} domain={[0, commitment]} />
                   <Tooltip content={<Tip />} />
-                  <ReferenceLine y={commitment} stroke={C.textDim} strokeDasharray="6 4" label={{ value: "Kommittert", fill: C.textDim, fontSize: 10, position: "right" }} />
-                  <Area type="monotone" dataKey="capitalAtRisk" name="Kapital bundet" fill={C.purpleDim} stroke={C.purple} strokeWidth={2} />
+                  <ReferenceLine y={commitment} stroke={C.textDim} strokeDasharray="6 4" label={{ value: "Kommittert (maks)", fill: C.textDim, fontSize: 10, position: "right" }} />
+                  <Area type="monotone" dataKey="capitalAtRisk" name="Bundet kapital i Turnstone" fill={C.purpleDim} stroke={C.purple} strokeWidth={2} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -556,7 +558,7 @@ function TurnstoneLiquidityTool() {
               <h3 style={chT}>Detaljert årlig oversikt</h3>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: font }}>
                 <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                  {["År","Innkalling","Utdeling","Netto",strat!=="credit"&&"Parkering",strat!=="credit"&&"Avk. park.",(strat==="credit"||strat==="combined")&&"Lån utst.",(strat==="credit"||strat==="combined")&&"Lånekostn.","Kapital bundet"].filter(Boolean).map((h,i) => (
+                  {["År","Innkalling","Utdeling","Netto",strat!=="credit"&&"Parkering",strat!=="credit"&&"Avk. park.",(strat==="credit"||strat==="combined")&&"Lån utst.",(strat==="credit"||strat==="combined")&&"Lånekostn.","Bundet kapital i Turnstone"].filter(Boolean).map((h,i) => (
                     <th key={i} style={{ padding: "8px 10px", textAlign: "right", color: C.textDim, fontWeight: 500, fontSize: 11 }}>{h}</th>
                   ))}
                 </tr></thead>
