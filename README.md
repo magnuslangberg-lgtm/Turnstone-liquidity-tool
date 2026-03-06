@@ -14,6 +14,7 @@ python3 -m http.server 4173
 ## Hva som er forbedret
 
 - Oppsett med `index.html` + `app.jsx` slik at verktøyet faktisk kan kjøres i nettleser.
+- Robust lasting av Recharts fra flere CDN-kilder (med fallback hvis én leverandør er blokkert).
 - Persistens i `localStorage` for innstillinger og redigerte kontantstrømmer.
 - "Nullstill"-knapp for å gå tilbake til standardverdier.
 - Robusthet for multiplikator-beregning når total innkalling er 0.
@@ -22,5 +23,5 @@ python3 -m http.server 4173
 ## Filer
 
 - `app.jsx`: Hovedapplikasjonen.
-- `index.html`: Inkluderer React, ReactDOM, Recharts og Babel via CDN.
+- `index.html`: Inkluderer React/ReactDOM/Babel og laster Recharts med fler-kilde fallback via CDN.
 - `data`: Original kildetekst beholdt urørt.

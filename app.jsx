@@ -1,5 +1,7 @@
 const { useState, useMemo, useCallback, useEffect } = React;
-const { AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } = Recharts;
+const RECHARTS_AVAILABLE = typeof window !== "undefined" && !!window.Recharts;
+const RechartsLib = RECHARTS_AVAILABLE ? window.Recharts : {};
+const { AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } = RechartsLib;
 
 const C = {
   bg: "#0C0E12", card: "#14171E", border: "#242936", borderLight: "#2E3448",
@@ -94,6 +96,13 @@ const Tip = ({ active, payload, label }) => {
     </div>
   );
 };
+
+
+const MissingChartsNotice = () => (
+  <div style={{ background: "#402a10", border: `1px solid ${C.accent}`, color: "#ffd8ad", borderRadius: 10, padding: "10px 12px", marginBottom: 14, fontSize: 12, lineHeight: 1.45 }}>
+    Recharts ble ikke lastet i nettleseren din. Verktøyet fungerer fortsatt, men grafer er midlertidig skjult.
+  </div>
+);
 
 const NumInput = ({ value, onChange, style: s }) => (
   <input type="number" value={value} onChange={e => onChange(Number(e.target.value) || 0)}
@@ -382,6 +391,7 @@ function TurnstoneLiquidityTool() {
 
           {/* Right - Charts */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {RECHARTS_AVAILABLE ? <>
             <div style={cCard}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h3 style={{ ...chT, margin: 0 }}>Kontantstrømmer over fondets levetid</h3>
@@ -427,6 +437,7 @@ function TurnstoneLiquidityTool() {
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+            </> : <MissingChartsNotice />}
 
             {/* Table */}
             <div style={{ ...cCard, overflow: "auto" }}>
