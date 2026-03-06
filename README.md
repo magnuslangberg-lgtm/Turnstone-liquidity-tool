@@ -17,6 +17,7 @@ python3 -m http.server 4173
 - Robust lasting av Recharts fra flere CDN-kilder (med fallback hvis én leverandør er blokkert).
 - Robust bootstrap av React/ReactDOM/PropTypes/Babel fra flere CDN-kilder, med tydelig feilmelding på skjerm dersom alt blokkeres.
 - Persistens i `localStorage` for innstillinger og redigerte kontantstrømmer.
+- Kvartalsvis fordeling av kallinger i år 1 (Q1–Q4) for mer realistisk likviditets-/renteberegning i oppstartsfasen.
 - "Nullstill"-knapp for å gå tilbake til standardverdier.
 - Robusthet for multiplikator-beregning når total innkalling er 0.
 - Responsivt hovedgrid for bedre visning på smalere skjermer.

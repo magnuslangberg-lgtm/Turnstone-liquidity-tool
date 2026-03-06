@@ -29,6 +29,7 @@ const DEFAULT_CF = [
   { year: 12, calls: 136, distributions: 29 },
 ];
 const DEFAULT_MULT = { stress: 0.30, unfavorable: 0.84, moderate: 1.44, favorable: 1.79 };
+const DEFAULT_Q1_CALL_SPLIT = [35, 30, 20, 15];
 const STORAGE_KEY = "turnstone-liquidity-tool:v1";
 
 const fmtE = (v) => { if (Math.abs(v) >= 1e6) return `€${(v/1e6).toFixed(1)}M`; if (Math.abs(v) >= 1e3) return `€${(v/1e3).toFixed(0)}k`; return `€${v.toFixed(0)}`; };
@@ -162,17 +163,39 @@ function TurnstoneLiquidityTool() {
     if (!saved) return { ...DEFAULT_MULT };
     try { return JSON.parse(saved).mults ?? { ...DEFAULT_MULT }; } catch { return { ...DEFAULT_MULT }; }
   });
+  const [q1CallSplit, setQ1CallSplit] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return [...DEFAULT_Q1_CALL_SPLIT];
+    try {
+      const fromStore = JSON.parse(saved).q1CallSplit;
+      return Array.isArray(fromStore) && fromStore.length === 4 ? fromStore : [...DEFAULT_Q1_CALL_SPLIT];
+    } catch { return [...DEFAULT_Q1_CALL_SPLIT]; }
+  });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults }));
-  }, [commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults, q1CallSplit }));
+  }, [commitment, parkRet, credRate, strat, scen, cumul, reinvest, repayDist, cfs, mults, q1CallSplit]);
 
   const updCf = useCallback((i, f, v) => { setCfs(p => { const n = [...p]; n[i] = { ...n[i], [f]: v }; return n; }); }, []);
   const updMult = useCallback((k, v) => { setMults(p => ({ ...p, [k]: v })); }, []);
-  const resetCf = useCallback(() => { setCfs(DEFAULT_CF.map(c => ({ ...c }))); setMults({ ...DEFAULT_MULT }); }, []);
+  const updQ1Split = useCallback((i, v) => {
+    setQ1CallSplit(p => {
+      const n = [...p];
+      n[i] = Math.max(0, v);
+      return n;
+    });
+  }, []);
+  const resetCf = useCallback(() => {
+    setCfs(DEFAULT_CF.map(c => ({ ...c })));
+    setMults({ ...DEFAULT_MULT });
+    setQ1CallSplit([...DEFAULT_Q1_CALL_SPLIT]);
+  }, []);
 
   const scenLabels = { stress: "Stress", unfavorable: "Ufordelaktig", moderate: "Moderat", favorable: "Fordelaktig" };
   const scale = commitment / 10000;
+  const q1SplitSum = q1CallSplit.reduce((sum, v) => sum + Math.max(0, v), 0);
+  const q1Norm = q1CallSplit.map(v => q1SplitSum > 0 ? Math.max(0, v) / q1SplitSum : 0.25);
+  const q1CallsByQuarter = q1Norm.map(v => v * cfs[0].calls);
 
   const data = useMemo(() => {
     let parkBal = commitment, credDrw = 0, totCall = 0, totDist = 0, totParkInc = 0, totCredCost = 0, cumNet = 0;
@@ -180,41 +203,66 @@ function TurnstoneLiquidityTool() {
     const targetDist = 10000 * mults[scen];
     const distMult = totBaseDist > 0 ? targetDist / totBaseDist : 0;
 
-    return cfs.map(cf => {
-      const calls = cf.calls * scale;
-      const dist = cf.distributions * distMult * scale;
-      totCall += calls; totDist += dist;
-      let parkInc = 0, credCost = 0, fromPark = 0, draw = 0, repay = 0;
+    const applyPeriod = (calls, dist, periodFactor) => {
+      let parkInc = 0, credCost = 0, repay = 0;
 
       if (strat === "parking") {
-        parkInc = parkBal * parkRet; totParkInc += parkInc; parkBal += parkInc;
-        const sell = Math.min(calls, parkBal); parkBal -= sell; fromPark = sell;
+        parkInc = parkBal * parkRet * periodFactor; totParkInc += parkInc; parkBal += parkInc;
+        const sell = Math.min(calls, parkBal); parkBal -= sell;
         if (reinvest) parkBal += dist;
       } else if (strat === "credit") {
-        draw = calls; credDrw += draw;
+        credDrw += calls;
         if (repayDist) { repay = Math.min(dist, credDrw); credDrw -= repay; }
-        credCost = credDrw * credRate; totCredCost += credCost;
+        credCost = credDrw * credRate * periodFactor; totCredCost += credCost;
       } else {
-        parkInc = parkBal * parkRet; totParkInc += parkInc; parkBal += parkInc;
-        const sell = Math.min(calls, parkBal); parkBal -= sell; fromPark = sell;
-        if (sell < calls) { draw = calls - sell; credDrw += draw; }
+        parkInc = parkBal * parkRet * periodFactor; totParkInc += parkInc; parkBal += parkInc;
+        const sell = Math.min(calls, parkBal); parkBal -= sell;
+        if (sell < calls) { credDrw += (calls - sell); }
         if (repayDist && credDrw > 0) {
           repay = Math.min(dist, credDrw); credDrw -= repay;
           if (reinvest) parkBal += (dist - repay);
         } else if (reinvest) { parkBal += dist; }
-        credCost = credDrw * credRate; totCredCost += credCost;
+        credCost = credDrw * credRate * periodFactor; totCredCost += credCost;
       }
+
       cumNet += (dist - calls);
+      return { parkInc, credCost };
+    };
+
+    return cfs.map(cf => {
+      const calls = cf.calls * scale;
+      const dist = cf.distributions * distMult * scale;
+      totCall += calls; totDist += dist;
+
+      let parkInc = 0, credCost = 0;
+
+      if (cf.year === 1) {
+        const splitSum = q1CallSplit.reduce((sum, v) => sum + Math.max(0, v), 0);
+        const normalized = q1CallSplit.map(v => splitSum > 0 ? Math.max(0, v) / splitSum : 0.25);
+        const qCalls = normalized.map(w => calls * w);
+
+        qCalls.forEach((qCall, idx) => {
+          const qDist = idx === 3 ? dist : 0;
+          const step = applyPeriod(qCall, qDist, 0.25);
+          parkInc += step.parkInc;
+          credCost += step.credCost;
+        });
+      } else {
+        const step = applyPeriod(calls, dist, 1);
+        parkInc = step.parkInc;
+        credCost = step.credCost;
+      }
+
       return {
         year: cf.year, yearLabel: `${cf.year}`, calls: -calls, distributions: dist,
         netCashFlow: dist - calls, cumNetCashFlow: cumNet,
         parkingBalance: Math.max(0, parkBal), parkingIncome: parkInc,
-        creditDrawn: credDrw, creditCost: credCost, repayment: repay,
+        creditDrawn: credDrw, creditCost: credCost,
         totalCalls: totCall, totalDistributions: totDist, totalParkingIncome: totParkInc, totalCreditCost: totCredCost,
         capitalAtRisk: strat === "parking" ? (commitment - parkBal) : strat === "credit" ? credDrw : (commitment - parkBal + credDrw),
       };
     });
-  }, [commitment, parkRet, credRate, strat, scen, scale, reinvest, repayDist, cfs, mults]);
+  }, [commitment, parkRet, credRate, strat, scen, scale, reinvest, repayDist, cfs, mults, q1CallSplit]);
 
   const last = data[data.length - 1];
   const peakRisk = Math.max(...data.map(d => Math.abs(d.capitalAtRisk)));
@@ -233,6 +281,7 @@ function TurnstoneLiquidityTool() {
     setReinvest(true);
     setRepayDist(true);
     setShowDetails(false);
+    setQ1CallSplit([...DEFAULT_Q1_CALL_SPLIT]);
     resetCf();
     localStorage.removeItem(STORAGE_KEY);
   }, [resetCf]);
@@ -336,7 +385,7 @@ function TurnstoneLiquidityTool() {
               </div>
               {!showDetails && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-                  {[["Mål netto IRR",">17%"],["Mål TVPI (moderat)",`${mults.moderate.toFixed(2)}x`],["Fondets levetid",`${cfs.length} år (+3)`],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
+                  {[["Mål netto IRR",">17%"],["Mål TVPI (moderat)",`${mults.moderate.toFixed(2)}x`],["Fondets levetid",`${cfs.length} år (+3)`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: C.textDim }}>{k}</span><span style={{ fontWeight: 600, color: C.text }}>{v}</span>
                     </div>
@@ -378,6 +427,21 @@ function TurnstoneLiquidityTool() {
                         <td style={{ padding: "6px 4px", textAlign: "center", color: C.green, fontWeight: 700, fontSize: 10 }}>{cfs.reduce((s,c)=>s+c.distributions,0).toLocaleString()}</td>
                       </tr></tfoot>
                     </table>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kvartalsvise kallinger i år 1</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                      {q1CallSplit.map((val, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: C.textDim, minWidth: 22 }}>{`Q${i+1}`}</span>
+                          <NumInput value={val} onChange={v => updQ1Split(i, v)} style={{ width: 52 }} />
+                          <span style={{ fontSize: 10, color: C.textMuted, minWidth: 58, textAlign: "right" }}>{fmtE(q1CallsByQuarter[i] * scale)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.5 }}>
+                      Summen normaliseres automatisk til 100% og brukes til å beregne kvartalsvis avkastning/rentekost i år 1. Beløpene over vises per valgt kommittering.
+                    </div>
                   </div>
                   <button onClick={resetCf} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.textMuted, fontSize: 11, cursor: "pointer", fontFamily: font, transition: "all 0.2s" }}
                     onMouseEnter={e => { e.target.style.borderColor = C.accent; e.target.style.color = C.accent; }}
