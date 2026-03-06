@@ -15,6 +15,7 @@ python3 -m http.server 4173
 
 - Oppsett med `index.html` + `app.jsx` slik at verktøyet faktisk kan kjøres i nettleser.
 - Robust lasting av Recharts fra flere CDN-kilder (med fallback hvis én leverandør er blokkert).
+- Robust bootstrap av React/ReactDOM/PropTypes/Babel fra flere CDN-kilder, med tydelig feilmelding på skjerm dersom alt blokkeres.
 - Persistens i `localStorage` for innstillinger og redigerte kontantstrømmer.
 - "Nullstill"-knapp for å gå tilbake til standardverdier.
 - Robusthet for multiplikator-beregning når total innkalling er 0.
