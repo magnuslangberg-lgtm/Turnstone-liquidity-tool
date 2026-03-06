@@ -15,20 +15,15 @@ const C = {
 };
 
 const DEFAULT_CF = [
-  { year: 1, calls: 6383, distributions: 495 },
-  { year: 2, calls: 1213, distributions: 1280 },
-  { year: 3, calls: 493, distributions: 1376 },
-  { year: 4, calls: 244, distributions: 3463 },
-  { year: 5, calls: 201, distributions: 3412 },
-  { year: 6, calls: 157, distributions: 3354 },
-  { year: 7, calls: 288, distributions: 286 },
-  { year: 8, calls: 288, distributions: 286 },
-  { year: 9, calls: 246, distributions: 215 },
-  { year: 10, calls: 204, distributions: 141 },
-  { year: 11, calls: 145, distributions: 45 },
-  { year: 12, calls: 136, distributions: 29 },
+  { year: 1, calls: 6200, distributions: 200 },
+  { year: 2, calls: 1500, distributions: 900 },
+  { year: 3, calls: 700, distributions: 1800 },
+  { year: 4, calls: 300, distributions: 2800 },
+  { year: 5, calls: 200, distributions: 2600 },
+  { year: 6, calls: 100, distributions: 1800 },
+  { year: 7, calls: 0, distributions: 900 },
 ];
-const DEFAULT_MULT = { stress: 0.30, unfavorable: 0.84, moderate: 1.44, favorable: 1.79 };
+const DEFAULT_MULT = { stress: 1.10, unfavorable: 1.30, moderate: 1.60, favorable: 2.00 };
 const DEFAULT_Q1_CALL_SPLIT = [35, 30, 20, 15];
 const STORAGE_KEY = "turnstone-liquidity-tool:v1";
 
@@ -119,8 +114,8 @@ function TurnstoneLiquidityTool() {
   });
   const [parkRet, setParkRet] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return 0.04;
-    try { return JSON.parse(saved).parkRet ?? 0.04; } catch { return 0.04; }
+    if (!saved) return 0.07;
+    try { return JSON.parse(saved).parkRet ?? 0.07; } catch { return 0.07; }
   });
   const [credRate, setCredRate] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -259,21 +254,21 @@ function TurnstoneLiquidityTool() {
         parkingBalance: Math.max(0, parkBal), parkingIncome: parkInc,
         creditDrawn: credDrw, creditCost: credCost,
         totalCalls: totCall, totalDistributions: totDist, totalParkingIncome: totParkInc, totalCreditCost: totCredCost,
-        capitalAtRisk: strat === "parking" ? (commitment - parkBal) : strat === "credit" ? credDrw : (commitment - parkBal + credDrw),
+        capitalAtRisk: Math.max(0, totCall - totDist),
       };
     });
   }, [commitment, parkRet, credRate, strat, scen, scale, reinvest, repayDist, cfs, mults, q1CallSplit]);
 
   const last = data[data.length - 1];
-  const peakRisk = Math.max(...data.map(d => Math.abs(d.capitalAtRisk)));
-  const avgDepl = data.reduce((s, d) => s + Math.abs(d.capitalAtRisk), 0) / data.length;
+  const peakRisk = Math.max(...data.map(d => d.capitalAtRisk));
+  const avgDepl = data.reduce((s, d) => s + d.capitalAtRisk, 0) / data.length;
   const totRet = last.totalDistributions - last.totalCalls + last.totalParkingIncome - last.totalCreditCost;
   const retPct = totRet / commitment;
   const effMult = last.totalCalls > 0 ? (last.totalDistributions + last.totalParkingIncome - last.totalCreditCost) / last.totalCalls : 0;
 
   const resetAll = useCallback(() => {
     setCommitment(500000);
-    setParkRet(0.04);
+    setParkRet(0.07);
     setCredRate(0.055);
     setStrat("parking");
     setScen("moderate");
@@ -346,7 +341,7 @@ function TurnstoneLiquidityTool() {
 
             <div style={card}>
               <h3 style={secT}>Avkastning & renter</h3>
-              {(strat === "parking" || strat === "combined") && <Slider label="Avkastning parkeringsfond" value={parkRet} onChange={setParkRet} min={0.01} max={0.10} step={0.005} format={v=>`${(v*100).toFixed(1)}%`} help="Forventet årlig avkastning på parkert kapital" />}
+              {(strat === "parking" || strat === "combined") && <Slider label="Avkastning parkeringsfond" value={parkRet} onChange={setParkRet} min={0.01} max={0.15} step={0.005} format={v=>`${(v*100).toFixed(1)}%`} help="Forventet årlig avkastning på parkert kapital (opp til 15%)" />}
               {(strat === "credit" || strat === "combined") && <Slider label="Lånerente (margin + referanse)" value={credRate} onChange={setCredRate} min={0.02} max={0.10} step={0.0025} format={v=>`${(v*100).toFixed(2)}%`} help="Effektiv rente på låneramme" />}
             </div>
 
@@ -385,7 +380,7 @@ function TurnstoneLiquidityTool() {
               </div>
               {!showDetails && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-                  {[["Mål netto IRR",">17%"],["Mål TVPI (moderat)",`${mults.moderate.toFixed(2)}x`],["Fondets levetid",`${cfs.length} år (+3)`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
+                  {[["Mål netto IRR",">17%"],["Mål TVPI (moderat)",`${mults.moderate.toFixed(2)}x`],["Fondets levetid",`${cfs.length} år`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: C.textDim }}>{k}</span><span style={{ fontWeight: 600, color: C.text }}>{v}</span>
                     </div>
