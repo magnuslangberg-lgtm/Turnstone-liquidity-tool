@@ -17,9 +17,9 @@ python3 -m http.server 4173
 - Robust lasting av Recharts fra flere CDN-kilder (med fallback hvis én leverandør er blokkert).
 - Robust bootstrap av React/ReactDOM/PropTypes/Babel fra flere CDN-kilder, med tydelig feilmelding på skjerm dersom alt blokkeres.
 - Persistens i `localStorage` for innstillinger og redigerte kontantstrømmer.
-- Kvartalsvis fordeling av kallinger i år 1 (Q1–Q4) for mer realistisk likviditets-/renteberegning i oppstartsfasen.
+- Kvartalsvis fordeling av kallinger i år 0 (Q1–Q4) for mer realistisk likviditets-/renteberegning i oppstartsfasen.
 - Kallinger legges før utbetalinger i årsmodellen (mer konservativ likviditetsbelastning).
-- Kortere standard horisont (7 år) med raskere realiseringsprofil i tråd med forventet fondsløp.
+- 5 års standard levetid med år 0 inkludert (hoveddelen av kallinger i første 12 måneder).
 - Scenarioer styres nå med justerbar IRR (0–40%), og TVPI avledes automatisk som (1+IRR)^5.
 - Toppslider for aktivt scenario (Stress låst til 0%, øvrige starter på 10/20/30%).
 - Eget bidragschart som viser avkastning fra Turnstone vs. parkering/lån i både EUR og %.

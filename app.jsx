@@ -15,16 +15,15 @@ const C = {
 };
 
 const DEFAULT_CF = [
-  { year: 1, calls: 6200, distributions: 200 },
-  { year: 2, calls: 1500, distributions: 900 },
-  { year: 3, calls: 700, distributions: 1800 },
-  { year: 4, calls: 300, distributions: 2800 },
-  { year: 5, calls: 200, distributions: 2600 },
-  { year: 6, calls: 100, distributions: 1800 },
-  { year: 7, calls: 0, distributions: 900 },
+  { year: 0, calls: 8000, distributions: 0 },
+  { year: 1, calls: 800, distributions: 700 },
+  { year: 2, calls: 250, distributions: 2200 },
+  { year: 3, calls: 100, distributions: 3000 },
+  { year: 4, calls: 0, distributions: 2400 },
+  { year: 5, calls: 0, distributions: 1700 },
 ];
 const DEFAULT_SCENARIO_IRR = { stress: 0.00, unfavorable: 0.10, moderate: 0.20, favorable: 0.30 };
-const DEFAULT_Q1_CALL_SPLIT = [35, 30, 20, 15];
+const DEFAULT_Q1_CALL_SPLIT = [20, 20, 20, 20];
 const STORAGE_KEY = "turnstone-liquidity-tool:v1";
 
 const fmtE = (v) => { if (Math.abs(v) >= 1e6) return `€${(v/1e6).toFixed(1)}M`; if (Math.abs(v) >= 1e3) return `€${(v/1e3).toFixed(0)}k`; return `€${v.toFixed(0)}`; };
@@ -247,7 +246,7 @@ function TurnstoneLiquidityTool() {
 
       let parkInc = 0, credCost = 0;
 
-      if (cf.year === 1) {
+      if (cf.year === 0) {
         const splitSum = q1CallSplit.reduce((sum, v) => sum + Math.max(0, v), 0);
         const normalized = q1CallSplit.map(v => splitSum > 0 ? Math.max(0, v) / splitSum : 0.25);
         const qCalls = normalized.map(w => calls * w);
@@ -415,7 +414,7 @@ function TurnstoneLiquidityTool() {
               </div>
               {!showDetails && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-                  {[["Mål netto IRR",">17%"],["Mål IRR (moderat)",`${(scenarioIrr.moderate*100).toFixed(1)}%`],["Fondets levetid",`${cfs.length} år`],["Kallinger år 1 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
+                  {[["Mål netto IRR",">17%"],["Mål IRR (moderat)",`${(scenarioIrr.moderate*100).toFixed(1)}%`],["Fondets levetid",`${cfs[cfs.length - 1]?.year ?? 5} år`],["Kallinger år 0 (Q1–Q4)",q1Norm.map(v=>`${(v*100).toFixed(0)}%`).join(" / ")],["Forvaltningshonorar","1% + 1.25%"],["Carried interest","12.5% / 15%"],["Preferred return","8%"]].map(([k,v],i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: C.textDim }}>{k}</span><span style={{ fontWeight: 600, color: C.text }}>{v}</span>
                     </div>
@@ -460,7 +459,7 @@ function TurnstoneLiquidityTool() {
                     </table>
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kvartalsvise kallinger i år 1</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kvartalsvise kallinger i år 0</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                       {q1CallSplit.map((val, i) => (
                         <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -471,7 +470,7 @@ function TurnstoneLiquidityTool() {
                       ))}
                     </div>
                     <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.5 }}>
-                      Summen normaliseres automatisk til 100% og brukes til å beregne kvartalsvis avkastning/rentekost i år 1. Beløpene over vises per valgt kommittering.
+                      Summen normaliseres automatisk til 100% og brukes til å beregne kvartalsvis avkastning/rentekost i år 0. Beløpene over vises per valgt kommittering.
                     </div>
                   </div>
                   <button onClick={resetCf} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg, color: C.textMuted, fontSize: 11, cursor: "pointer", fontFamily: font, transition: "all 0.2s" }}
